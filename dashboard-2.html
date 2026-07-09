@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMC Terminal</title>
+<style>
+  :root {
+    --bg: #0b0e11;
+    --panel: #12161b;
+    --line: #1f262e;
+    --text: #d7dde3;
+    --muted: #7c8a97;
+    --amber: #e8a33d;
+    --green: #3ddc84;
+    --red: #e8503d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .mono { font-family: "SF Mono", "Consolas", "Menlo", monospace; }
+
+  #login-screen {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #login-screen h1 { font-size: 1.1rem; color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase; }
+  #login-screen input {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-size: 1rem;
+    width: 260px;
+  }
+  #login-screen button, .action-btn {
+    background: var(--amber);
+    color: #1a1200;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #login-error { color: var(--red); font-size: 0.85rem; min-height: 1em; }
+
+  #app { display: none; max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 20px;
+  }
+  header h1 { font-size: 1rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber); margin: 0; }
+  .pulse-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+
+  .stat-row { display: flex; justify-content: space-between; }
+  .stat { text-align: left; }
+  .stat .value { font-size: 1.4rem; font-weight: 600; }
+  .stat .label { font-size: 0.7rem; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 0.7rem; text-transform: uppercase; padding-bottom: 8px; }
+  td { padding: 8px 0; border-top: 1px solid var(--line); }
+  .side-buy { color: var(--green); }
+  .side-sell { color: var(--red); }
+
+  .empty { color: var(--muted); font-size: 0.85rem; padding: 8px 0; }
+
+  .manual-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .manual-form select, .manual-form input {
+    background: #0b0e11;
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    flex: 1;
+    min-width: 90px;
+  }
+
+  .activity-item { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 8px 0; border-top: 1px solid var(--line); }
+  .activity-item:first-child { border-top: none; }
+  .status-ok { color: var(--green); }
+  .status-error, .status-blocked { color: var(--red); }
+
+  .market-list { display: flex; flex-direction: column; gap: 0; }
+  .market-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .market-row:first-child { border-top: none; }
+  .market-symbol { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.85rem; }
+  .coin-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--amber); flex-shrink: 0;
+  }
+  .market-price { text-align: right; }
+  .market-price .price { font-size: 0.9rem; font-weight: 600; }
+  .market-price .change { font-size: 0.72rem; }
+  .change-up { color: var(--green); }
+  .change-down { color: var(--red); }
+
+  .amount-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .amount-row label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <h1>SMC Terminal</h1>
+  <input type="password" id="password-input" placeholder="Dashboard password" autocomplete="off">
+  <button onclick="login()">Enter</button>
+  <div id="login-error"></div>
+</div>
+
+<div id="app">
+  <header>
+    <h1>SMC Terminal</h1>
+    <div class="pulse-wrap"><span class="pulse"></span><span id="mode-label">—</span></div>
+  </header>
+
+  <div class="card">
+    <h2>Markets</h2>
+    <div class="market-list" id="markets-container">
+      <div class="empty">Loading prices...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Account</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="value" id="equity-val">—</div><div class="label">Equity (USDT)</div></div>
+      <div class="stat"><div class="value" id="positions-val">—</div><div class="label">Open Positions</div></div>
+      <div class="stat"><div class="value" id="lock-val">—</div><div class="label">Drawdown Lock</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Money Management Plan</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="value" id="plan-day-val">—</div><div class="label">Day</div></div>
+      <div class="stat"><div class="value" id="plan-expected-val">—</div><div class="label">Expected (USDT)</div></div>
+      <div class="stat"><div class="value" id="plan-target-val">—</div><div class="label">Target Lock</div></div>
+    </div>
+  </div>
+
+
+  <div class="card">
+    <h2>Open Positions</h2>
+    <div id="positions-container"><div class="empty">No open positions.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Manual Trade</h2>
+    <div class="manual-form">
+      <select id="manual-symbol">
+        <option value="BTCUSDT">BTCUSDT</option>
+        <option value="ETHUSDT">ETHUSDT</option>
+        <option value="SOLUSDT">SOLUSDT</option>
+        <option value="BNBUSDT">BNBUSDT</option>
+        <option value="XRPUSDT">XRPUSDT</option>
+        <option value="DOGEUSDT">DOGEUSDT</option>
+        <option value="ADAUSDT">ADAUSDT</option>
+        <option value="AVAXUSDT">AVAXUSDT</option>
+        <option value="LINKUSDT">LINKUSDT</option>
+        <option value="LTCUSDT">LTCUSDT</option>
+      </select>
+      <select id="manual-action"><option value="buy">Buy</option><option value="sell">Sell</option></select>
+      <button class="action-btn" onclick="manualTrade()">Execute</button>
+    </div>
+    <div class="amount-row">
+      <label for="manual-amount">Amount (USDT margin):</label>
+      <input type="number" id="manual-amount" placeholder="e.g. 5" min="1" step="0.1" style="flex:1; background:#0b0e11; border:1px solid var(--line); color:var(--text); padding:8px 10px; border-radius:6px; font-size:0.85rem;">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Trade History</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="value" id="hist-closed-val">—</div><div class="label">Closed Trades</div></div>
+      <div class="stat"><div class="value" id="hist-winrate-val">—</div><div class="label">Win Rate</div></div>
+      <div class="stat"><div class="value" id="hist-pnl-val">—</div><div class="label">Total PnL</div></div>
+    </div>
+    <div style="margin-top:12px; font-size:0.8rem; color: var(--muted);">
+      <span id="hist-wins-val">—</span> wins · <span id="hist-losses-val">—</span> losses
+    </div>
+    <div id="history-container" style="margin-top:14px;"><div class="empty">No closed trades yet.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Strategy Accuracy (Backtest)</h2>
+    <div class="manual-form">
+      <select id="backtest-symbol">
+        <option value="BTCUSDT">BTCUSDT</option>
+        <option value="ETHUSDT">ETHUSDT</option>
+        <option value="SOLUSDT">SOLUSDT</option>
+        <option value="BNBUSDT">BNBUSDT</option>
+        <option value="XRPUSDT">XRPUSDT</option>
+        <option value="DOGEUSDT">DOGEUSDT</option>
+        <option value="ADAUSDT">ADAUSDT</option>
+        <option value="AVAXUSDT">AVAXUSDT</option>
+        <option value="LINKUSDT">LINKUSDT</option>
+        <option value="LTCUSDT">LTCUSDT</option>
+      </select>
+      <button class="action-btn" onclick="runBacktest()">Run Backtest</button>
+    </div>
+    <div id="backtest-result" style="margin-top:14px;">
+      <div class="empty">Run a backtest to measure this strategy's actual historical win rate on real candles - not a guess.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Activity</h2>
+    <div id="activity-container"><div class="empty">No signals yet.</div></div>
+  </div>
+</div>
+
+<script>
+  // Points at the live Railway backend
+  const API_BASE = "https://web-production-66509.up.railway.app";
+
+  let dashboardPassword = "";
+
+  async function login() {
+    dashboardPassword = document.getElementById("password-input").value;
+    const res = await apiCall("/api/status");
+    if (res && res.equity !== undefined) {
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("app").style.display = "block";
+      refreshAll();
+      setInterval(refreshAll, 8000);
+    } else {
+      document.getElementById("login-error").textContent = "Incorrect password or server unreachable.";
+    }
+  }
+
+  async function apiCall(path, extra = {}) {
+    try {
+      const res = await fetch(API_BASE + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: dashboardPassword, ...extra }),
+      });
+      return await res.json();
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  }
+
+  async function refreshHistory() {
+    const data = await apiCall("/api/history");
+    if (!data) return;
+    const s = data.summary || {};
+    document.getElementById("hist-closed-val").textContent = s.total_closed ?? "—";
+    document.getElementById("hist-winrate-val").textContent = s.win_rate !== undefined ? s.win_rate + "%" : "—";
+    document.getElementById("hist-pnl-val").textContent = s.total_pnl !== undefined ? s.total_pnl.toFixed(2) : "—";
+    document.getElementById("hist-wins-val").textContent = s.wins ?? "—";
+    document.getElementById("hist-losses-val").textContent = s.losses ?? "—";
+
+    const container = document.getElementById("history-container");
+    if (data.trades && data.trades.length) {
+      let html = "<table><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>PnL</th></tr>";
+      data.trades.slice(0, 15).forEach(t => {
+        const sideClass = t.side === "Buy" ? "side-buy" : "side-sell";
+        const pnlClass = t.pnl >= 0 ? "side-buy" : "side-sell";
+        html += `<tr><td>${t.symbol}</td><td class="${sideClass}">${t.side}</td><td>${t.qty}</td><td class="${pnlClass}">${t.pnl}</td></tr>`;
+      });
+      html += "</table>";
+      container.innerHTML = html;
+    } else {
+      container.innerHTML = '<div class="empty">No closed trades yet.</div>';
+    }
+  }
+
+  async function refreshMarkets() {
+    const data = await apiCall("/api/prices");
+    const container = document.getElementById("markets-container");
+    if (!data || !data.prices || Object.keys(data.prices).length === 0) {
+      container.innerHTML = '<div class="empty">Prices unavailable.</div>';
+      return;
+    }
+    const order = ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","LTCUSDT"];
+    let html = "";
+    order.forEach(sym => {
+      const p = data.prices[sym];
+      if (!p) return;
+      const changeClass = p.change_24h_percent >= 0 ? "change-up" : "change-down";
+      const sign = p.change_24h_percent >= 0 ? "+" : "";
+      html += `<div class="market-row">
+        <div class="market-symbol"><span class="coin-dot"></span>${sym}</div>
+        <div class="market-price"><div class="price">${p.last_price.toLocaleString(undefined,{maximumFractionDigits:4})}</div><div class="change ${changeClass}">${sign}${p.change_24h_percent}%</div></div>
+      </div>`;
+    });
+    container.innerHTML = html || '<div class="empty">Prices unavailable.</div>';
+  }
+
+  async function refreshAll() {
+    const status = await apiCall("/api/status");
+    if (status) {
+      document.getElementById("equity-val").textContent = status.equity ? status.equity.toFixed(2) : "—";
+      document.getElementById("positions-val").textContent = status.open_positions ?? "—";
+      document.getElementById("lock-val").textContent = status.daily_loss_locked ? "LOCKED" : "OK";
+      document.getElementById("mode-label").textContent = "Live";
+
+      const plan = status.money_plan;
+      if (plan) {
+        document.getElementById("plan-day-val").textContent = `${plan.day}/${plan.total_days}`;
+        document.getElementById("plan-expected-val").textContent = plan.expected_capital_today.toFixed(2);
+        document.getElementById("plan-target-val").textContent = status.daily_target_locked ? "HIT" : "OPEN";
+      }
+    }
+
+    const posData = await apiCall("/api/positions");
+    const posContainer = document.getElementById("positions-container");
+    if (posData && posData.positions && posData.positions.length) {
+      let html = "<table><tr><th>Symbol</th><th>Side</th><th>Size</th><th>Entry</th><th>PnL</th></tr>";
+      posData.positions.forEach(p => {
+        const sideClass = p.side === "Buy" ? "side-buy" : "side-sell";
+        html += `<tr><td>${p.symbol}</td><td class="${sideClass}">${p.side}</td><td>${p.size}</td><td>${p.entry_price}</td><td>${p.unrealized_pnl}</td></tr>`;
+      });
+      html += "</table>";
+      posContainer.innerHTML = html;
+    } else {
+      posContainer.innerHTML = '<div class="empty">No open positions.</div>';
+    }
+
+    const activityData = await apiCall("/api/activity");
+    const activityContainer = document.getElementById("activity-container");
+    if (activityData && activityData.activity && activityData.activity.length) {
+      let html = "";
+      activityData.activity.forEach(a => {
+        const statusClass = "status-" + (a.result?.status || "error");
+        html += `<div class="activity-item"><span>${a.time} · ${a.source} · ${a.symbol} ${a.action}</span><span class="${statusClass}">${a.result?.status || ""}</span></div>`;
+      });
+      activityContainer.innerHTML = html;
+    } else {
+      activityContainer.innerHTML = '<div class="empty">No signals yet.</div>';
+    }
+
+    await refreshHistory();
+    await refreshMarkets();
+  }
+
+  async function manualTrade() {
+    const symbol = document.getElementById("manual-symbol").value;
+    const action = document.getElementById("manual-action").value;
+    const amountRaw = document.getElementById("manual-amount").value;
+    const amount_usd = amountRaw ? parseFloat(amountRaw) : null;
+    const result = await apiCall("/api/manual_trade", { symbol, action, amount_usd });
+    alert(result ? JSON.stringify(result, null, 2) : "Request failed.");
+    refreshAll();
+  }
+
+  async function runBacktest() {
+    const symbol = document.getElementById("backtest-symbol").value;
+    const container = document.getElementById("backtest-result");
+    container.innerHTML = '<div class="empty">Running backtest against historical candles...</div>';
+    const result = await apiCall("/api/backtest", { symbol });
+    if (!result || result.error) {
+      container.innerHTML = `<div class="empty">Backtest failed: ${result?.error || "unknown error"}</div>`;
+      return;
+    }
+    if (result.total_signals === 0) {
+      container.innerHTML = `<div class="empty">No signals found in the last ${result.candles_tested} candles for ${result.symbol}.</div>`;
+      return;
+    }
+    const wrClass = result.win_rate_percent >= 50 ? "side-buy" : "side-sell";
+    container.innerHTML = `
+      <div class="stat-row">
+        <div class="stat"><div class="value ${wrClass}">${result.win_rate_percent ?? "—"}%</div><div class="label">Win Rate</div></div>
+        <div class="stat"><div class="value">${result.total_signals}</div><div class="label">Signals Found</div></div>
+        <div class="stat"><div class="value">${result.candles_tested}</div><div class="label">Candles Tested</div></div>
+      </div>
+      <div style="margin-top:10px; font-size:0.8rem; color: var(--muted);">
+        ${result.wins} wins · ${result.losses} losses · ${result.no_result_yet} undecided (based on ${result.tp_percent_used}% TP / ${result.sl_percent_used}% SL)
+      </div>`;
+  }
+
+  document.getElementById("password-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") login();
+  });
+</script>
+
+</body>
+</html>
